@@ -1,0 +1,45 @@
+% Create 18650 Li-ion cell parameters
+% Save as: create_18650_cell.m
+
+function create_18650_cell()
+    % 18650 Li-ion cell specifications
+    cell_params = struct();
+    
+    % Basic parameters
+    cell_params.Capacity = 2.6;          % Ah
+    cell_params.NominalVoltage = 3.7;    % V
+    cell_params.MaxVoltage = 4.2;        % V
+    cell_params.MinVoltage = 2.8;        % V
+    cell_params.InternalResistance = 0.035; % Ohm
+    cell_params.Mass = 0.045;            % kg
+    
+    % Thermal parameters
+    cell_params.ThermalMass = 50;        % J/K
+    cell_params.SurfaceArea = 0.0015;    % m²
+    cell_params.InitialTemp = 298.15;    % K (25°C)
+    
+    % Create OCV lookup table (SOC vs Voltage)
+    SOC_points = [0 10 20 30 40 50 60 70 80 90 100]'; % Percentage
+    
+    % OCV at different temperatures
+    OCV_25C = [2.80 3.05 3.20 3.30 3.50 3.65 3.78 3.88 3.98 4.08 4.20]';
+    OCV_0C  = [2.75 3.00 3.15 3.25 3.45 3.60 3.73 3.83 3.93 4.03 4.15]';
+    OCV_45C = [2.82 3.07 3.22 3.32 3.52 3.67 3.80 3.90 4.00 4.10 4.22]';
+    
+    % Create 2D lookup table
+    Temp_points = [273.15 298.15 318.15]; % K (0°C, 25°C, 45°C)
+    OCV_table = [OCV_0C, OCV_25C, OCV_45C];
+    
+    % Save parameters
+    cell_params.SOC_points = SOC_points;
+    cell_params.Temp_points = Temp_points;
+    cell_params.OCV_table = OCV_table;
+    
+    save('Li_ion_18650_params.mat', 'cell_params');
+    
+    % Display confirmation
+    fprintf('✅ 18650 cell parameters created and saved\n');
+    fprintf('   Capacity: %.1f Ah\n', cell_params.Capacity);
+    fprintf('   Voltage range: %.1f - %.1f V\n', cell_params.MinVoltage, cell_params.MaxVoltage);
+    fprintf('   Internal resistance: %.3f Ω\n', cell_params.InternalResistance);
+end

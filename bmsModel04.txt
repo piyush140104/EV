@@ -1,0 +1,52 @@
+% Create main Simulink model programmatically
+% Save as: create_BMS_model.m
+
+function create_BMS_model()
+    % Create new Simulink model
+    model_name = 'BMS_Complete_System';
+    
+    % Close existing model if open
+    if bdIsLoaded(model_name)
+        close_system(model_name, 0);
+    end
+    
+    % Create new model
+    new_system(model_name);
+    open_system(model_name);
+    
+    % Configure solver settings
+    set_param(model_name, 'SolverType', 'Fixed-step');
+    set_param(model_name, 'Solver', 'ode4'); % Runge-Kutta
+    set_param(model_name, 'FixedStep', '0.001'); % 1ms
+    set_param(model_name, 'StopTime', '10800'); % 3 hours
+    
+    % Add subsystems
+    add_block('built-in/Subsystem', [model_name '/Battery_Pack_Model']);
+    add_block('built-in/Subsystem', [model_name '/SOC_Estimator']);
+    add_block('built-in/Subsystem', [model_name '/Thermal_Management']);
+    add_block('built-in/Subsystem', [model_name '/Cell_Balancing']);
+    add_block('built-in/Subsystem', [model_name '/Protection_System']);
+    add_block('built-in/Subsystem', [model_name '/ML_Integration']);
+    
+    % Add input/output blocks
+    add_block('simulink/Sources/From Workspace', [model_name '/Charging_Current']);
+    add_block('simulink/Sinks/Scope', [model_name '/Voltage_Scope']);
+    add_block('simulink/Sinks/Scope', [model_name '/Current_Scope']);
+    add_block('simulink/Sinks/Scope', [model_name '/Temperature_Scope']);
+    add_block('simulink/Sinks/Scope', [model_name '/SOC_Scope']);
+    add_block('simulink/Sinks/To Workspace', [model_name '/Data_Logger']);
+    
+    % Configure data logging
+    set_param([model_name '/Data_Logger'], 'VariableName', 'simulation_results');
+    set_param([model_name '/Data_Logger'], 'SaveFormat', 'Structure');
+    
+    % Configure charging input
+    set_param([model_name '/Charging_Current'], 'VariableName', 'charging_profile');
+    
+    save_system(model_name);
+    
+    fprintf('✅ Main BMS model created: %s.slx\n', model_name);
+    fprintf('   Solver: Fixed-step, 1ms resolution\n');
+    fprintf('   Simulation time: 3 hours\n');
+    fprintf('   Subsystems: 6 main components\n');
+end

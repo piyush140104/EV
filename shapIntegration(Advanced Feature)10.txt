@@ -1,0 +1,45 @@
+% Integrate SHAP values for explainable ML predictions
+% Save as: explainable_ML.m
+
+function [shap_values, feature_importance] = explainable_ML(features, prediction)
+    % Generate SHAP-like values for feature importance
+    % This is a simplified version - integrate with your actual SHAP analysis
+    
+    feature_names = {'SOC (%)', 'Voltage (V)', 'Current (A)', 'Temperature (°C)', 'Degradation (%)'};
+    
+    % Calculate feature contributions (simplified SHAP approximation)
+    base_prediction = 2.5; % Base charging duration (hours)
+    
+    % Feature impacts (these would come from your actual SHAP values)
+    shap_values = zeros(size(features));
+    
+    % SOC impact
+    if features(1) < 20
+        shap_values(1) = -0.8; % Low SOC = faster charging
+    elseif features(1) > 80
+        shap_values(1) = +1.2; % High SOC = slower charging
+    end
+    
+    % Temperature impact
+    if features(4) < 5
+        shap_values(4) = +0.5; % Cold = slower
+    elseif features(4) > 40
+        shap_values(4) = +0.3; % Hot = slower (safety)
+    else
+        shap_values(4) = -0.2; % Optimal temp = faster
+    end
+    
+    % Degradation impact
+    shap_values(5) = features(5) * 0.05; % Higher degradation = slower
+    
+    % Current impact (charging rate capability)
+    shap_values(3) = -features(3) * 0.1; % Higher current capability = faster
+    
+    % Voltage impact (relates to SOC)
+    if features(2) > 4.0
+        shap_values(2) = +0.4; % High voltage = near full = slower
+    end
+    
+    % Normalize to match prediction
+    predicted_duration = base_prediction + sum(shap_values);
+    shap_values = shap_values

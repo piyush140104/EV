@@ -1,0 +1,40 @@
+% Create realistic charging profile for simulation
+% Save as: create_charging_profile.m
+
+function create_charging_profile()
+    % Simulation time: 3 hours (10800 seconds)
+    time_vector = (0:1:10800)'; % 1 second resolution
+    
+    % Two-stage charging: CC-CV (Constant Current - Constant Voltage)
+    charging_current = zeros(size(time_vector));
+    
+    % Phase 1: Constant Current (0-6000s, ~1.7 hours)
+    CC_phase = time_vector <= 6000;
+    charging_current(CC_phase) = 2.6; % 1C rate
+    
+    % Phase 2: Constant Voltage - Tapering current (6000s-end)
+    CV_phase = time_vector > 6000;
+    t_cv = time_vector(CV_phase) - 6000; % Time since CV start
+    charging_current(CV_phase) = 2.6 * exp(-t_cv/1800); % Exponential decay
+    
+    % Ensure minimum current
+    charging_current(charging_current < 0.05) = 0.05; % Minimum 50mA
+    
+    % Create workspace variable for Simulink
+    charging_profile = [time_vector, charging_current];
+    
+    save('ChargingProfile.mat', 'charging_profile', 'time_vector', 'charging_current');
+    
+    % Plot charging profile
+    figure('Name', 'Charging Profile');
+    plot(time_vector/3600, charging_current, 'b-', 'LineWidth', 2);
+    xlabel('Time (hours)');
+    ylabel('Charging Current (A)');
+    title('CC-CV Charging Profile');
+    grid on;
+    
+    fprintf('✅ Charging profile created\n');
+    fprintf('   Total time: %.1f hours\n', max(time_vector)/3600);
+    fprintf('   CC phase: %.1f hours at %.1fA\n', 6000/3600, 2.6);
+    fprintf('   CV phase: %.1f hours (tapering)\n', (max(time_vector)-6000)/3600);
+end

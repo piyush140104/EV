@@ -1,0 +1,140 @@
+% Complete BMS protection system using Stateflow logic
+% Save as: BMS_protection.m
+
+function [System_State, Fault_Code, Relay_Enable] = BMS_protection(V_pack, I_pack, T_pack, V_cells)
+    % BMS Protection State Machine
+    %
+    % States:
+    %   0 = NORMAL
+    %   1 = WARNING  
+    %   2 = PROTECTION (reduced current)
+    %   3 = FAULT (disconnect)
+    %   4 = EMERGENCY (immediate shutdown)
+    
+    persistent current_state fault_timer
+    
+    if isempty(current_state)
+        current_state = 0; % Start in NORMAL state
+        fault_timer = 0;
+    end
+    
+    % Protection thresholds
+    V_cell_max = 4.25;    % Overvoltage threshold
+    V_cell_min = 2.75;    % Undervoltage threshold  
+    V_pack_max = 42.5;    % Pack overvoltage
+    V_pack_min = 27.5;    % Pack undervoltage
+    I_max_charge = 8.0;   % Max charging current (3C)
+    I_max_discharge = 10.0; % Max discharge current
+    T_max_normal = 318.15; % 45°C - start derating
+    T_max_fault = 333.15;  % 60°C - fault condition
+    T_min_charge = 273.15; % 0°C - no charging below this
+    
+    % Check all fault conditions
+    overvoltage = any(V_cells > V_cell_max) || (V_pack > V_pack_max);
+    undervoltage = any(V_cells < V_cell_min) || (V_pack < V_pack_min);
+    overcurrent_charge = (I_pack > I_max_charge) && (I_pack > 0);
+    overcurrent_discharge = (I_pack < -I_max_discharge) && (I_pack < 0);
+    over_temperature = T_pack > T_max_fault;
+    under_temperature = (T_pack < T_min_charge) && (I_pack > 0); % Charging only
+    high_temp_warning = T_pack > T_max_normal;
+    
+    % Emergency conditions (immediate shutdown)
+    emergency = overvoltage || over_temperature;
+    
+    % Fault conditions (disconnect after delay)
+    fault = undervoltage || overcurrent_charge || overcurrent_discharge || under_temperature;
+    
+    % Warning conditions
+    warning = high_temp_warning && ~fault && ~emergency;
+    
+    % State machine logic
+    switch current_state
+        case 0 % NORMAL
+            if emergency
+                current_state = 4;
+                fault_timer = 0;
+            elseif fault
+                fault_timer = fault_timer + 0.001; % 1ms increment
+                if fault_timer > 5.0 % 5 second delay for faults
+                    current_state = 3;
+                else
+                    current_state = 2; % Protection state during fault delay
+                end
+            elseif warning
+                current_state = 1;
+            end
+            
+        case 1 % WARNING
+            if emergency
+                current_state = 4;
+                fault_timer = 0;
+            elseif fault
+                current_state = 2;
+                fault_timer = 0;
+            elseif ~warning
+                current_state = 0; % Return to normal
+            end
+            
+        case 2 % PROTECTION
+            if emergency
+                current_state = 4;
+                fault_timer = 0;
+            elseif fault
+                fault_timer = fault_timer + 0.001;
+                if fault_timer > 5.0
+                    current_state = 3;
+                end
+            else
+                fault_timer = 0;
+                current_state = 0; % Fault cleared
+            end
+            
+        case 3 % FAULT
+            % Can only recover by manual reset or removing fault for extended time
+            if ~fault && ~emergency && ~warning
+                fault_timer = fault_timer + 0.001;
+                if fault_timer > 30.0 % 30 seconds of normal conditions
+                    current_state = 0;
+                    fault_timer = 0;
+                end
+            else
+                fault_timer = 0;
+                if emergency
+                    current_state = 4;
+                end
+            end
+            
+        case 4 % EMERGENCY
+            % Latched state - requires manual reset
+            % In real system, this would need operator intervention
+            if ~emergency && ~fault && ~warning
+                fault_timer = fault_timer + 0.001;
+                if fault_timer > 60.0 % 1 minute recovery time
+                    current_state = 0;
+                    fault_timer = 0;
+                end
+            else
+                fault_timer = 0;
+            end
+    end
+    
+    % Generate fault codes
+    Fault_Code = 0;
+    if overvoltage, Fault_Code = bitor(Fault_Code, 1); end      % Bit 0
+    if undervoltage, Fault_Code = bitor(Fault_Code, 2); end     % Bit 1  
+    if overcurrent_charge, Fault_Code = bitor(Fault_Code, 4); end % Bit 2
+    if overcurrent_discharge, Fault_Code = bitor(Fault_Code, 8); end % Bit 3
+    if over_temperature, Fault_Code = bitor(Fault_Code, 16); end % Bit 4
+    if under_temperature, Fault_Code = bitor(Fault_Code, 32); end % Bit 5
+    
+    % Control relay
+    Relay_Enable = (current_state < 3); % Disconnect for FAULT and EMERGENCY
+    
+    System_State = current_state;
+    
+    % Status reporting
+    state_names = {'NORMAL', 'WARNING', 'PROTECTION', 'FAULT', 'EMERGENCY'};
+    if current_state > 0
+        fprintf('🚨 BMS State: %s (Code: %d)\n', state_names{current_state+1}, Fault_Code);
+    end
+end

@@ -1,0 +1,71 @@
+% Cell balancing for battery pack
+% Save as: cell_balancing.m
+
+function [Balance_Enable, Balance_Current] = cell_balancing(V_cells, SOC_cells, Balancing_Mode)
+    % Passive cell balancing algorithm
+    %
+    % Inputs:
+    %   V_cells: [10x1] Individual cell voltages
+    %   SOC_cells: [10x1] Individual cell SOCs  
+    %   Balancing_Mode: 0=off, 1=voltage-based, 2=SOC-based
+    %
+    % Outputs:
+    %   Balance_Enable: [10x1] Enable signal for each cell
+    %   Balance_Current: [10x1] Balancing current for each cell
+    
+    n_cells = length(V_cells);
+    Balance_Enable = zeros(n_cells, 1);
+    Balance_Current = zeros(n_cells, 1);
+    
+    if Balancing_Mode == 0
+        return; % Balancing disabled
+    end
+    
+    % Balancing thresholds
+    if Balancing_Mode == 1 % Voltage-based balancing
+        values = V_cells;
+        threshold = 0.010; % 10mV difference threshold
+    else % SOC-based balancing (Mode 2)
+        values = SOC_cells;
+        threshold = 1.0; % 1% SOC difference threshold  
+    end
+    
+    % Find cells that need balancing
+    max_value = max(values);
+    min_value = min(values);
+    avg_value = mean(values);
+    
+    if (max_value - min_value) > threshold
+        % Enable balancing for cells above average
+        above_avg = values > (avg_value + threshold/2);
+        Balance_Enable = above_avg;
+        
+        % Calculate balancing current (passive resistive balancing)
+        R_balance = 10; % 10 Ohm balancing resistors
+        
+        for i = 1:n_cells
+            if Balance_Enable(i)
+                % Current through balancing resistor
+                Balance_Current(i) = V_cells(i) / R_balance;
+                
+                % Limit to safe current (0.5A maximum)
+                Balance_Current(i) = min(Balance_Current(i), 0.5);
+            end
+        end
+        
+        % Time estimation for balancing
+        if any(Balance_Enable)
+            capacity_diff = (max(SOC_cells) - min(SOC_cells)) / 100 * 2.6; % Ah
+            avg_balance_current = mean(Balance_Current(Balance_Enable > 0));
+            balance_time_hours = capacity_diff / avg_balance_current;
+            
+            fprintf('⚖️ Balancing active: %.1f hours estimated\n', balance_time_hours);
+        end
+    end
+    
+    % Safety check: Don't balance if any cell is too low
+    min_safe_voltage = 3.2; % Don't balance below 3.2V
+    unsafe_cells = V_cells < min_safe_voltage;
+    Balance_Enable(unsafe_cells) = 0;
+    Balance_Current(unsafe_cells) = 0;
+end

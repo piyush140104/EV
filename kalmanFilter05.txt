@@ -1,0 +1,72 @@
+% Advanced SOC estimation using Extended Kalman Filter
+% Save as: SOC_Kalman_Filter.m
+
+function SOC_estimated = SOC_Kalman_Filter(V_measured, I_measured, T_measured, dt)
+    % Extended Kalman Filter for SOC estimation
+    
+    persistent x P Q R H F initialized
+    
+    if isempty(initialized)
+        % Initialize filter parameters
+        x = 0.5;        % Initial SOC estimate (50%)
+        P = 0.01;       % Initial estimation error covariance
+        Q = 1e-6;       % Process noise covariance (very small)
+        R = 0.01;       % Measurement noise covariance (voltage sensor noise)
+        initialized = true;
+    end
+    
+    % System parameters
+    Capacity_Ah = 2.6;
+    Coulomb_efficiency = 0.99;
+    
+    % State prediction: SOC(k+1) = SOC(k) - (I * dt) / (3600 * Capacity)
+    x_pred = x - (I_measured * dt * Coulomb_efficiency) / (3600 * Capacity_Ah);
+    x_pred = max(0, min(1, x_pred)); % Clamp between 0 and 1
+    
+    % Prediction error covariance
+    F = 1; % State transition matrix (linear)
+    P_pred = F * P * F' + Q;
+    
+    % Measurement prediction: V = OCV(SOC, T) + I * R_internal
+    OCV_pred = interpolate_OCV(x_pred, T_measured);
+    R_internal = 0.035; % Internal resistance
+    V_pred = OCV_pred + I_measured * R_internal;
+    
+    % Measurement residual
+    y = V_measured - V_pred;
+    
+    % Measurement Jacobian (derivative of OCV w.r.t. SOC)
+    H = calculate_OCV_derivative(x_pred, T_measured);
+    
+    % Kalman gain
+    S = H * P_pred * H' + R;
+    K = P_pred * H' / S;
+    
+    % State update
+    x = x_pred + K * y;
+    x = max(0, min(1, x)); % Clamp between 0 and 1
+    
+    % Covariance update
+    P = (1 - K * H) * P_pred;
+    
+    SOC_estimated = x * 100; % Convert to percentage
+end
+
+function OCV = interpolate_OCV(SOC, T_kelvin)
+    % Interpolate OCV from lookup table
+    load('Li_ion_18650_params.mat', 'cell_params');
+    
+    SOC_percent = SOC * 100;
+    OCV = interp2(cell_params.Temp_points, cell_params.SOC_points, ...
+                 cell_params.OCV_table, T_kelvin, SOC_percent, 'linear');
+end
+
+function dOCV_dSOC = calculate_OCV_derivative(SOC, T_kelvin)
+    % Calculate derivative of OCV with respect to SOC for Kalman filter
+    delta_SOC = 0.01; % Small change for numerical derivative
+    
+    OCV_1 = interpolate_OCV(SOC - delta_SOC/2, T_kelvin);
+    OCV_2 = interpolate_OCV(SOC + delta_SOC/2, T_kelvin);
+    
+    dOCV_dSOC = (OCV_2 - OCV_1) / delta_SOC;
+end

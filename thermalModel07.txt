@@ -1,0 +1,87 @@
+% Thermal management system for battery pack
+% Save as: thermal_management.m
+
+function [T_pack, Cooling_Power, Fan_Speed] = thermal_management(I_battery, T_ambient, T_pack_prev)
+    % Battery thermal model with active cooling
+    
+    persistent cooling_state last_switch_time
+    
+    if isempty(cooling_state)
+        cooling_state = 0; % 0=off, 1=low, 2=medium, 3=high
+        last_switch_time = 0;
+    end
+    
+    % Physical parameters
+    thermal_mass = 500;          % J/K (thermal mass of 10-cell pack)
+    surface_area = 0.015;        % m² (cooling surface area)
+    R_internal = 0.035;          % Ω (internal resistance)
+    dt = 0.001;                  % Time step (1ms)
+    
+    % Heat generation (I²R losses + entropy heat)
+    Q_generated = I_battery^2 * R_internal + abs(I_battery) * 0.1; % Watts
+    
+    % Cooling system control (with hysteresis to prevent oscillation)
+    current_time = getCurrentTime(); % This would be simulation time
+    
+    if current_time - last_switch_time > 30 % Minimum 30s between switches
+        if T_pack_prev > 313.15 % 40°C - Start cooling
+            cooling_state = 3; % High cooling
+            last_switch_time = current_time;
+        elseif T_pack_prev > 308.15 % 35°C - Medium cooling
+            if cooling_state == 0
+                cooling_state = 2;
+                last_switch_time = current_time;
+            end
+        elseif T_pack_prev < 303.15 % 30°C - Turn off cooling
+            if cooling_state > 0
+                cooling_state = 0;
+                last_switch_time = current_time;
+            end
+        end
+    end
+    
+    % Cooling power based on state
+    switch cooling_state
+        case 0 % Natural convection only
+            h_conv = 5; % W/(m²·K)
+            Fan_Speed = 0;
+            Cooling_Power = 0;
+        case 1 % Low cooling
+            h_conv = 15;
+            Fan_Speed = 30;
+            Cooling_Power = 10;
+        case 2 % Medium cooling  
+            h_conv = 40;
+            Fan_Speed = 60;
+            Cooling_Power = 25;
+        case 3 % High cooling
+            h_conv = 80;
+            Fan_Speed = 100;
+            Cooling_Power = 50;
+    end
+    
+    % Heat dissipation to ambient
+    Q_dissipated = h_conv * surface_area * (T_pack_prev - T_ambient);
+    
+    % Net heat and temperature change
+    Q_net = Q_generated - Q_dissipated - Cooling_Power;
+    dT_dt = Q_net / thermal_mass;
+    
+    % Update temperature
+    T_pack = T_pack_prev + dT_dt * dt;
+    
+    % Temperature limits (safety)
+    T_pack = max(T_pack, T_ambient); % Can't be below ambient
+    T_pack = min(T_pack, 373.15);    % Safety limit (100°C)
+end
+
+function current_time = getCurrentTime()
+    % Get current simulation time (placeholder)
+    % In actual Simulink, this would use Clock block
+    persistent sim_time
+    if isempty(sim_time)
+        sim_time = 0;
+    end
+    sim_time = sim_time + 0.001; % Increment by 1ms
+    current_time = sim_time;
+end
