@@ -1,0 +1,39 @@
+% Load your cell parameters file
+load('Li_ion_18650_params.mat'); % This gives variable cell_params in workspace
+
+% Open your Simulink model
+open_system('BMS_Complete_System');
+open_system('BMS_Complete_System/Battery_Pack_Model');
+
+% Define the path for the new block
+batt_blk = 'BMS_Complete_System/Battery_Pack_Model/Battery_Block';
+
+% Add the 'Battery (Table-Based)' block inside Battery_Pack_Model if not present
+if ~bdIsLoaded('BMS_Complete_System')
+    load_system('BMS_Complete_System');
+end
+
+if isempty(find_system('BMS_Complete_System/Battery_Pack_Model','Name','Battery_Block'))
+    add_block('simscape/Utilities/Battery Table-Based', batt_blk, ...
+        'Position', [100 100 250 180]);
+end
+
+% Convert numeric arrays to string for set_param
+soc_str = mat2str(cell_params.SOC_points(:));      % Make sure it's a column vector
+temp_str = mat2str(cell_params.Temp_points(:));
+ocv_str = mat2str(cell_params.OCV_table);          % This will create a flat array, see note below
+
+% Fill in the block parameters programmatically
+set_param(batt_blk, ...
+    'soc_vector', soc_str, ...
+    'temperature_vector', temp_str, ...
+    'voc_table', ocv_str, ...
+    'CellCapacity', num2str(cell_params.Capacity), ...
+    'NominalVoltage', num2str(cell_params.NominalVoltage), ...
+    'InternalResistance', num2str(cell_params.InternalResistance) ...
+    % Add more based on your cell_param fields...
+);
+
+% Save and close
+save_system('BMS_Complete_System');
+disp('Battery block added and parameterized!');
